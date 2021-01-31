@@ -1,0 +1,133 @@
+from textblob import TextBlob
+import sys
+import vaderSentiment
+import tweepy
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import os
+import nltk
+import pycountry
+import re
+import string
+from wordcloud import WordCloud, STOPWORDS
+from PIL import Image
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from langdetect import detect
+from nltk.stem import SnowballStemmer
+from sklearn.feature_extraction.text import CountVectorizer
+import nltk
+import string 
+from nltk.corpus import stopwords
+nltk.download('stopwords')
+from nltk.tokenize import word_tokenize
+nltk.download('punkt')
+nltk.downloader.download('vader_lexicon')
+import demoji
+demoji.download_codes()
+import seaborn as sns
+
+# Authentication
+
+consumerKey = "mLJGCZVawcHYQrU9XFkj3Dfyr"
+consumerSecret = "QbhQqE1muToYp5qe3gHeWWCSWxkIy1lB10jUxuqwNObvk3CvvZ"
+accessToken = "1351867749979586562-9AGAnOdnhmzyqSS5f1zcTy1XmaBbVS"
+accessTokenSecret = "XLEVDNbkiEYASsr0GxGOc6OoqiiUWRyljfjIXoJwwHYN1"
+auth = tweepy.OAuthHandler(consumerKey, consumerSecret)
+auth.set_access_token(accessToken, accessTokenSecret)
+api = tweepy.API(auth)
+
+ keyword=input("Please enter keyword or hashtag to search: ")
+ #noOfTweet =int(input ("Please enter how many tweets to analyze: "))
+ #date_since="2021-01-01"
+a = 'Biden'
+tweets = tweepy.Cursor(api.search, q= keyword + '-filter:retweets', lang='en',since='2021-01-01',result_type='mixed').items(100)
+#tweets = tweepy.Cursor(api.search, q='abort-filter:retweets', lang='en',since='2021-01-01',result_type='mixed').items(100)
+tweet_details = [[tweet.geo, tweet.text, tweet.user.screen_name, tweet.user.location, tweet.retweet_count] for tweet in tweets]
+list_tweets = pd.DataFrame(data=tweet_details, columns=["geo","text","user","location","RT_count"])
+list_tweets.head()
+#list_tweets = []
+#for tweet in tweets:
+#for tweet in tweet_details:
+#  list_tweets.append(tweet.text)
+
+#print(len(list_tweets))
+
+#usunięcie duplikatów
+list_tweets = pd.DataFrame(list_tweets)
+list_tweets.drop_duplicates(inplace = True)
+
+list_tweets
+
+#Funkcja do usuwania znakow 
+def cleanTxt(text):
+ text = re.sub('@[A-Za-z0–9]+', '', text) #Removing @mentions
+ text = re.sub('#', '', text) # Removing '#' hash tag
+ text = re.sub('RT[\s]+', '', text) # Removing RT
+ text = re.sub('https?:\/\/\S+', '', text) # Removing hyperlink
+ text = re.sub(r"(?:\@|http?\://|https?\://|www)\S+", "", text)
+ text = text.replace("#", "").replace("_", " ").replace("...", " ").replace("\n", " ").replace("–", " ").replace("’", " ").replace("‘", " ")
+ text = demoji.replace_with_desc(text,"")
+#  text = re.sub('!', '', text) # Removing hyperlink
+#  text = re.sub(':', '', text) # Removing hyperlink
+#  text = re.sub(',', '', text) # Removing hyperlink
+ text  = "".join([char for char in text if char not in string.punctuation])
+ #text = re.sub('[0-9]+','', text)
+
+ return text
+
+
+# Clean the tweets
+list_tweets['cleaned_text'] = list_tweets['text'].apply(cleanTxt).str.lower()
+#list_tweets["cleaned_text"] = list_tweets.text.str.lower()
+
+# Show the cleaned tweets
+list_tweets
+
+list_tweets["tokenized_text"] = list_tweets["cleaned_text"].apply(word_tokenize) 
+list_tweets["without_stop_text"] = list_tweets["tokenized_text"].apply(lambda x: [word for word in x if not word in stopwords.words('english')])
+
+ps = nltk.PorterStemmer()
+def stemming(text):
+    text = [ps.stem(word) for word in text]
+    return text
+
+list_tweets["stemmed"] = list_tweets["without_stop_text"].apply(lambda x: stemming(x))
+list_tweets
+
+list_tweets["stemmed"] = list_tweets["stemmed"].apply(lambda x: ' '.join(map(str, x)))
+
+# Create a function to get the subjectivity
+def getSubjectivity(text):
+   return TextBlob(text).sentiment.subjectivity
+
+# Create a function to get the polarity
+def getPolarity(text):
+   return  TextBlob(text).sentiment.polarity
+
+
+# Create two new columns 'Subjectivity' & 'Polarity'
+list_tweets["Subjectivity"] = list_tweets["stemmed"].apply(getSubjectivity)
+list_tweets["Polarity"] = list_tweets["stemmed"].apply(getPolarity)
+
+list_tweets
+
+# Create a function to compute negative (-1), neutral (0) and positive (+1) analysis
+def getAnalysis(score):
+  if score < 0:
+    return 'Negative'
+  elif score == 0:
+    return 'Neutral'
+  else:
+    return 'Positive'
+list_tweets['Analysis'] = list_tweets['Polarity'].apply(getAnalysis)
+# Show the dataframe
+list_tweets
+
+list_tweets.groupby('Analysis').count()
+
+plot = sns.countplot(x = "Analysis", data = list_tweets, palette="Paired", order=list_tweets["Analysis"].value_counts().index)
+plot.set_title("Wydźwięk tweet-ów")
+plot.set(xlabel="Liczba tweet-ów", ylabel = "Wydźwięk")
+plt.xticks(rotation=65)
+
